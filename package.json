@@ -10,6 +10,7 @@
     "dev": "pnpm -r --parallel run dev",
     "dev:frontend": "pnpm --filter @chat-example/frontend dev",
     "dev:backend": "pnpm --filter @chat-example/backend dev",
+    "dev:worker": "pnpm --filter @chat-example/backend dev:worker",
     "build": "pnpm -r run build",
     "test": "pnpm --filter @chat-example/backend test",
     "lint": "pnpm --filter @chat-example/frontend lint",
