@@ -1,8 +1,14 @@
 import { createSchema } from "graphql-yoga";
 import { sendMessage } from "./services.js";
-import { conversations, pubsub } from "./store.js";
+import { pubsub } from "./store.js";
+import * as messagesRepo from "./db/messagesRepo.js";
 import { MESSAGE_STATUS, statusLabel } from "./types.js";
-import type { Conversation, Message } from "./types.js";
+import type { Message } from "./types.js";
+
+type ConversationResult = {
+	id: string;
+	messages: Message[];
+};
 
 export const schema = createSchema({
 	typeDefs: /* GraphQL */ `
@@ -55,18 +61,21 @@ export const schema = createSchema({
 		Conversation: {
 			// Backend owns visibility: queued messages are not exposed via query.
 			// The sender still gets QUEUED from the mutation response + optimistic UI.
-			messages: (conversation: Conversation) =>
+			messages: (conversation: ConversationResult) =>
 				conversation.messages.filter(
 					(message) => message.status !== "queued",
 				),
 		},
 		Query: {
-			conversation: (_parent, args: { id: string }) => {
-				const conversation = conversations.get(args.id);
-				if (!conversation) {
+			conversation: async (_parent, args: { id: string }) => {
+				const exists = await messagesRepo.conversationExists(args.id);
+				if (!exists) {
 					throw new Error("Conversation not found");
 				}
-				return conversation;
+				const messages = await messagesRepo.getConversationMessages(
+					args.id,
+				);
+				return { id: args.id, messages };
 			},
 		},
 		Mutation: {
@@ -84,8 +93,9 @@ export const schema = createSchema({
 					senderName: string;
 				},
 			) => {
-				const conversation = conversations.get(conversationId);
-				if (!conversation) {
+				const exists =
+					await messagesRepo.conversationExists(conversationId);
+				if (!exists) {
 					throw new Error("Conversation not found");
 				}
 				return sendMessage(

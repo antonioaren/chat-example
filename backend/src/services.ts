@@ -1,17 +1,13 @@
-// Simulate a messaging provider while preserving conversation ownership.
+// Messaging-provider seam (Twilio stand-in). id/createdAt are generated here
+// (the producer) so the SK is deterministic for the worker downstream.
 
-import { addMessage, updateStatus } from "./store.js";
+import { messageQueue } from "./queue/messageQueue.js";
 import type { Message } from "./types.js";
 
-/** Delay before the provider accepts the message (`queued` → `sent`). */
-export const SENT_DELAY_MS = 3000;
-
-/** Delay before the provider confirms delivery (`sent` → `delivered`). */
-export const DELIVERED_DELAY_MS = 6000;
-
 /**
- * Persist a queued message and schedule provider status progression.
- * Subscribers are notified only when status advances (first event at `sent`).
+ * Enqueue a message for async processing and return it immediately with
+ * `status: "queued"` — the mutation stays synchronous-feeling; the worker
+ * persists it and schedules status progression.
  */
 export const sendMessage = async (
 	conversationId: string,
@@ -19,26 +15,31 @@ export const sendMessage = async (
 	senderId: string,
 	senderName: string,
 ): Promise<Message> => {
-	const message = await addMessage(
-		conversationId,
+	const message: Message = {
+		id: crypto.randomUUID(),
 		body,
 		senderId,
 		senderName,
+		createdAt: new Date().toISOString(),
+		status: "queued",
+	};
+
+	await messageQueue.add(
+		"send-message",
+		{
+			conversationId,
+			messageId: message.id,
+			body: message.body,
+			senderId: message.senderId,
+			senderName: message.senderName,
+			createdAt: message.createdAt,
+		},
+		// Retry on transient failure (e.g. Redis/DynamoDB blip mid-job) —
+		// the whole job re-runs; putMessage + statusQueue.add are safe to
+		// repeat (overwrite/duplicate delayed jobs), so this recovers a
+		// message that would otherwise be stuck invisible at `queued`.
+		{ attempts: 3, backoff: { type: "exponential", delay: 1000 } },
 	);
-
-	// Simulate Twilio accepting then delivering the message
-	setTimeout(() => {
-		updateStatus(conversationId, message.id, {
-			status: "sent",
-		});
-	}, SENT_DELAY_MS);
-
-	setTimeout(() => {
-		updateStatus(conversationId, message.id, {
-			status: "delivered",
-			deliveredAt: new Date().toISOString(),
-		});
-	}, DELIVERED_DELAY_MS);
 
 	return message;
 };
