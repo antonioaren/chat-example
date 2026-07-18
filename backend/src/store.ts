@@ -35,7 +35,8 @@ export const addMessage = async (
 		status: "queued" as const,
 	};
 	conversation.messages.push(message);
-	pubsub.publish(`message-${conversationId}`, message);
+	// Visibility starts at `sent`: do not publish on create (queued).
+	// Subscribers learn about the message via updateStatus → publish.
 
 	return message;
 };

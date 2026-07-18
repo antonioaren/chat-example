@@ -1,6 +1,33 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { conversations, addMessage, updateStatus } from '../src/store.js'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import {
+  conversations,
+  addMessage,
+  updateStatus,
+  pubsub,
+} from '../src/store.js'
 import { yoga } from '../src/app.js'
+import type { Message } from '../src/types.js'
+
+async function collectTopicEvents(
+  topic: string,
+  run: () => void | Promise<void>,
+  settleMs = 20,
+): Promise<Message[]> {
+  const events: Message[] = []
+  const iterator = pubsub.subscribe(topic)[Symbol.asyncIterator]()
+  const pump = (async () => {
+    for await (const payload of { [Symbol.asyncIterator]: () => iterator }) {
+      events.push(payload as Message)
+    }
+  })()
+  // Start the pump; first next() arms the subscription before we publish.
+  void pump
+  await Promise.resolve()
+  await run()
+  await new Promise((resolve) => setTimeout(resolve, settleMs))
+  await iterator.return?.()
+  return events
+}
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -70,6 +97,16 @@ describe('store — addMessage', () => {
     expect(conv.messages).toHaveLength(3)
     expect(conv.messages.map((m) => m.body)).toEqual(['first', 'second', 'third'])
   })
+
+  it('should not publish to PubSub on create (queued stays invisible)', async () => {
+    conversations.set('conv-1', { id: 'conv-1', messages: [] })
+
+    const events = await collectTopicEvents('message-conv-1', async () => {
+      await addMessage('conv-1', 'secret until sent', 'user-1', 'Alice')
+    })
+
+    expect(events).toHaveLength(0)
+  })
 })
 
 describe('store — updateStatus', () => {
@@ -117,6 +154,22 @@ describe('store — updateStatus', () => {
     const result = updateStatus('conv-1', 'no-such-msg', { status: 'sent' })
 
     expect(result).toBeUndefined()
+  })
+
+  it('should publish to PubSub when status advances to sent', async () => {
+    conversations.set('conv-1', { id: 'conv-1', messages: [] })
+    const msg = await addMessage('conv-1', 'now visible', 'user-1', 'Alice')
+
+    const events = await collectTopicEvents('message-conv-1', () => {
+      updateStatus('conv-1', msg.id, { status: 'sent' })
+    })
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      id: msg.id,
+      body: 'now visible',
+      status: 'sent',
+    })
   })
 })
 
@@ -192,7 +245,7 @@ describe('GraphQL — conversation query', () => {
     conversations.clear()
   })
 
-  it('should return conversation with messages when it exists', async () => {
+  it('should hide queued messages from conversation query', async () => {
     conversations.set('conv-q', { id: 'conv-q', messages: [] })
     await gql({
       query: `mutation { sendMessage(conversationId: "conv-q", body: "hi", senderId: "user-1", senderName: "Alice") { id } }`,
@@ -205,11 +258,32 @@ describe('GraphQL — conversation query', () => {
     const json = await res.json()
     expect(json.errors).toBeUndefined()
     expect(json.data.conversation.id).toBe('conv-q')
+    expect(json.data.conversation.messages).toHaveLength(0)
+  })
+
+  it('should include messages once status is sent', async () => {
+    vi.useFakeTimers()
+    conversations.set('conv-q', { id: 'conv-q', messages: [] })
+
+    await gql({
+      query: `mutation { sendMessage(conversationId: "conv-q", body: "hi", senderId: "user-1", senderName: "Alice") { id } }`,
+    })
+
+    await vi.advanceTimersByTimeAsync(3000)
+
+    const res = await gql({
+      query: `{ conversation(id: "conv-q") { id messages { id body status } } }`,
+    })
+
+    const json = await res.json()
+    expect(json.errors).toBeUndefined()
     expect(json.data.conversation.messages).toHaveLength(1)
     expect(json.data.conversation.messages[0]).toMatchObject({
       body: 'hi',
-      status: 'QUEUED',
+      status: 'SENT',
     })
+
+    vi.useRealTimers()
   })
 
   it('should return a GraphQL error when conversation does not exist', async () => {
@@ -222,4 +296,8 @@ describe('GraphQL — conversation query', () => {
     expect(Array.isArray(json.errors)).toBe(true)
     expect(json.data.conversation).toBeNull()
   })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
