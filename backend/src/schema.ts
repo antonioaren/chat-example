@@ -1,7 +1,8 @@
 import { createSchema } from "graphql-yoga";
-import { addMessage, conversations, pubsub, updateStatus } from "./store.js";
+import { sendMessage } from "./services.js";
+import { conversations, pubsub } from "./store.js";
 import { MESSAGE_STATUS, statusLabel } from "./types.js";
-import type { Message } from "./types.js";
+import type { Conversation, Message } from "./types.js";
 
 export const schema = createSchema({
 	typeDefs: /* GraphQL */ `
@@ -51,6 +52,14 @@ export const schema = createSchema({
 		Message: {
 			statusLabel: (message: Message) => statusLabel(message),
 		},
+		Conversation: {
+			// Backend owns visibility: queued messages are not exposed via query.
+			// The sender still gets QUEUED from the mutation response + optimistic UI.
+			messages: (conversation: Conversation) =>
+				conversation.messages.filter(
+					(message) => message.status !== "queued",
+				),
+		},
 		Query: {
 			conversation: (_parent, args: { id: string }) => {
 				const conversation = conversations.get(args.id);
@@ -79,28 +88,12 @@ export const schema = createSchema({
 				if (!conversation) {
 					throw new Error("Conversation not found");
 				}
-				const message = await addMessage(
+				return sendMessage(
 					conversationId,
 					body,
 					senderId,
 					senderName,
 				);
-
-				// Simulate Twilio sending the message
-				setTimeout(() => {
-					updateStatus(conversationId, message.id, {
-						status: "sent",
-					});
-				}, 3000);
-
-				setTimeout(() => {
-					updateStatus(conversationId, message.id, {
-						status: "delivered",
-						deliveredAt: new Date().toISOString(),
-					});
-				}, 6000);
-
-				return message;
 			},
 		},
 		Subscription: {

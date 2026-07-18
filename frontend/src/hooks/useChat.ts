@@ -78,9 +78,9 @@ export function useChat(
           currentUserId,
           currentUserName,
         )
-        // The subscription may echo the server message before the mutation
-        // resolves; dropping the optimistic entry and upserting covers both
-        // orderings without duplicates.
+        // Replace the optimistic row with the server message (status queued).
+        // Peers do not see this yet — backend publishes only from `sent` onward
+        // via onMessageUpdate, which also advances this client's status.
         setMessages((prev) =>
           upsertById(
             prev.filter((message) => message.id !== optimisticId),
