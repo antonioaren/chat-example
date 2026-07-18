@@ -31,7 +31,7 @@ Layering (each file imports only from the layer below):
 - `src/queue/` — BullMQ: `messageQueue`/`statusQueue` (producers), `messageWorker`/`statusWorker` (consumers), `index.ts` (`startWorkers()`). Run via the separate `src/worker.ts` process (`pnpm dev:worker`), not in-process with the server.
 - `src/types.ts` — domain types.
 
-Requires Docker services (`pnpm docker:up` from repo root) and a `backend/.env` (copy from `backend/env.example`) before `pnpm dev` or `pnpm dev:worker`.
+Requires Docker infra (`pnpm docker:dev` from repo root — DynamoDB Local + Redis only) and a `backend/.env` (copy from `backend/.env.example`) before `pnpm dev` or `pnpm dev:worker`. `pnpm docker:up` (no `.dev` suffix) instead builds and runs the full stack — backend, worker, and frontend included — as a production-like simulation; not needed for day-to-day dev.
 
 Key invariants:
 
@@ -41,7 +41,7 @@ Key invariants:
 
 ## Tests
 
-Vitest, two tiers. Default `npm test` runs the unit tier only (`vitest.config.ts` excludes `test/integration/**`) — no Docker required: `test/app.test.ts` exercises the full GraphQL layer through `yoga.fetch()` with the DB/queue mocked; `test/db/messagesRepo.test.ts` and `test/queue/messageWorker.test.ts` mock the AWS SDK client and BullMQ respectively; `test/services.test.ts` mocks `messageQueue.add`. `npm run test:integration` runs `test/integration/**` against real DynamoDB Local + Redis (`vitest.integration.config.ts`) — requires `pnpm docker:up` first.
+Vitest, two tiers. Default `npm test` runs the unit tier only (`vitest.config.ts` excludes `test/integration/**`) — no Docker required: `test/app.test.ts` exercises the full GraphQL layer through `yoga.fetch()` with the DB/queue mocked; `test/db/messagesRepo.test.ts` and `test/queue/messageWorker.test.ts` mock the AWS SDK client and BullMQ respectively; `test/services.test.ts` mocks `messageQueue.add`. `npm run test:integration` runs `test/integration/**` against real DynamoDB Local + Redis (`vitest.integration.config.ts`) — requires `pnpm docker:dev` first.
 
 ## Notes
 
