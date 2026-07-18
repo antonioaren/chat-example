@@ -32,6 +32,9 @@ importers:
 
   frontend:
     dependencies:
+      graphql-sse:
+        specifier: ^2.6.0
+        version: 2.6.0(graphql@16.14.2)
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -790,6 +793,12 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  graphql-sse@2.6.0:
+    resolution: {integrity: sha512-BXT5Rjv9UFunjQsmN9WWEIq+TFNhgYibgwo1xkXLxzguQVyOd6paJ4v5DlL9K5QplS0w74bhF+aUiqaGXZBaug==}
+    engines: {node: '>=12'}
+    peerDependencies:
+      graphql: '>=0.11 <=16'
 
   graphql-yoga@5.21.2:
     resolution: {integrity: sha512-IIRF/3xtjj2D6caAWL9177hQ8tV3mWB3hve1GRnz7njPhQ3iY1jFtSp98fNGv0yV9kaPh9kKQ8JWdJZnedVmDw==}
@@ -1601,6 +1610,10 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  graphql-sse@2.6.0(graphql@16.14.2):
+    dependencies:
+      graphql: 16.14.2
 
   graphql-yoga@5.21.2(graphql@16.14.2):
     dependencies:

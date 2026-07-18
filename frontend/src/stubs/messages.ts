@@ -1,6 +1,6 @@
 import type { Conversation, Message, Participant } from '@/types/chat'
 
-export const DEMO_CONVERSATION_ID = 'demo-1'
+export const DEMO_CONVERSATION_ID = 'conversation-1'
 
 const STORAGE_PREFIX = 'simple-react-chat:conversation:'
 

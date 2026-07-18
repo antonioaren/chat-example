@@ -18,6 +18,7 @@ export function ChatPage() {
   const { messages, isLoading, fetchError, sendMessage, retry } = useChat(
     DEMO_CONVERSATION_ID,
     userId ?? '',
+    name ?? '',
   )
 
   return (
