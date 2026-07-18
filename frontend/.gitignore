@@ -50,3 +50,6 @@ coverage
 Thumbs.db
 
 .atl
+# Playwright
+test-results
+playwright-report

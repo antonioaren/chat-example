@@ -13,6 +13,7 @@
     "dev:worker": "pnpm --filter @chat-example/backend dev:worker",
     "build": "pnpm -r run build",
     "test": "pnpm --filter @chat-example/backend test",
+    "test:e2e": "pnpm --filter @chat-example/frontend test:e2e",
     "lint": "pnpm --filter @chat-example/frontend lint",
     "docker:dev": "docker compose -f docker-compose.dev.yml up -d",
     "docker:dev:down": "docker compose -f docker-compose.dev.yml down",

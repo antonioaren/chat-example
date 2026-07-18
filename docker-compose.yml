@@ -1,6 +1,10 @@
 services:
   dynamodb-local:
     image: amazon/dynamodb-local
+    # The named volume is created root-owned, but the image runs as user
+    # `dynamodblocal`, which then cannot write the SQLite db file. Run as
+    # root so -dbPath is writable.
+    user: root
     ports: ["8000:8000"]
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
     volumes: ["dynamodb-data:/home/dynamodblocal/data"]
