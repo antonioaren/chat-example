@@ -1,13 +1,9 @@
 import type { Conversation, Message, Participant } from '@/types/chat'
-import {
-  loadConversation,
-  saveConversation,
-} from '@/stubs/messages'
+import { loadConversation, saveConversation } from '@/stubs/messages'
+import { gqlFetch, sseClient } from '@/services/graphqlClient'
 
-// Stub service — swap these implementations for real API calls later.
-
-const SIMULATE_SEND_FAILURE = true
-const SEND_FAILURE_RATE = 0.3
+// Messages go through the GraphQL backend; participants stay local
+// (join-by-name has no backend counterpart yet).
 
 export class CapacityError extends Error {
   constructor() {
@@ -16,36 +12,59 @@ export class CapacityError extends Error {
   }
 }
 
-function updateMessageStatus(
-  conversationId: string,
-  messageId: string,
-  status: Message['status'],
-): void {
-  const conversation = loadConversation(conversationId)
-  saveConversation(conversationId, {
-    ...conversation,
-    messages: conversation.messages.map((message) =>
-      message.id === messageId ? { ...message, status } : message,
-    ),
-  })
+interface GraphQLMessage {
+  id: string
+  body: string
+  senderId: string
+  senderName: string
+  status: 'QUEUED' | 'SENT' | 'DELIVERED' | 'FAILED'
+  createdAt: string
+}
+
+const STATUS_MAP: Record<GraphQLMessage['status'], Message['status']> = {
+  QUEUED: 'queued',
+  SENT: 'sent',
+  DELIVERED: 'delivered',
+  FAILED: 'failed',
+}
+
+const MESSAGE_FIELDS = 'id body senderId senderName status createdAt'
+
+function toClientMessage(message: GraphQLMessage): Message {
+  return {
+    id: message.id,
+    body: message.body,
+    senderId: message.senderId,
+    status: STATUS_MAP[message.status],
+    createdAt: message.createdAt,
+  }
 }
 
 export async function getConversation(
   conversationId: string,
 ): Promise<Conversation> {
-  return loadConversation(conversationId)
+  const data = await gqlFetch<{
+    conversation: { id: string; messages: GraphQLMessage[] }
+  }>(
+    `query ($id: ID!) {
+      conversation(id: $id) { id messages { ${MESSAGE_FIELDS} } }
+    }`,
+    { id: conversationId },
+  )
+
+  // Participants are stored locally; the backend only knows about messages.
+  const local = loadConversation(conversationId)
+
+  return {
+    id: data.conversation.id,
+    participants: local.participants,
+    messages: data.conversation.messages.map(toClientMessage),
+  }
 }
 
 export async function fetchMessages(conversationId: string): Promise<Message[]> {
-  return loadConversation(conversationId).messages
-}
-
-export async function getMessage(
-  conversationId: string,
-  messageId: string,
-): Promise<Message | undefined> {
-  const conversation = loadConversation(conversationId)
-  return conversation.messages.find((message) => message.id === messageId)
+  const conversation = await getConversation(conversationId)
+  return conversation.messages
 }
 
 export async function addParticipant(
@@ -75,45 +94,49 @@ export async function addParticipant(
   return participant
 }
 
-export function sendMessage(
+export async function sendMessage(
   conversationId: string,
   body: string,
   senderId: string,
+  senderName: string,
 ): Promise<Message> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (
-        SIMULATE_SEND_FAILURE &&
-        Math.random() < SEND_FAILURE_RATE
-      ) {
-        reject(new Error('Failed to send message'))
-        return
-      }
+  const data = await gqlFetch<{ sendMessage: GraphQLMessage }>(
+    `mutation ($conversationId: ID!, $body: String!, $senderId: ID!, $senderName: String!) {
+      sendMessage(
+        conversationId: $conversationId
+        body: $body
+        senderId: $senderId
+        senderName: $senderName
+      ) { ${MESSAGE_FIELDS} }
+    }`,
+    { conversationId, body, senderId, senderName },
+  )
 
-      const conversation = loadConversation(conversationId)
-      const message: Message = {
-        id: crypto.randomUUID(),
-        body,
-        senderId,
-        status: 'queued',
-        createdAt: new Date().toISOString(),
-      }
+  return toClientMessage(data.sendMessage)
+}
 
-      saveConversation(conversationId, {
-        ...conversation,
-        messages: [...conversation.messages, message],
-      })
-
-      setTimeout(
-        () => updateMessageStatus(conversationId, message.id, 'sent'),
-        800,
-      )
-      setTimeout(
-        () => updateMessageStatus(conversationId, message.id, 'delivered'),
-        2000,
-      )
-
-      resolve(message)
-    }, 1000)
-  })
+export function subscribeToMessages(
+  conversationId: string,
+  onMessage: (message: Message) => void,
+  onError?: (error: unknown) => void,
+): () => void {
+  return sseClient.subscribe<{ onMessageUpdate: GraphQLMessage }>(
+    {
+      query: `subscription ($id: ID!) {
+        onMessageUpdate(conversationId: $id) { ${MESSAGE_FIELDS} }
+      }`,
+      variables: { id: conversationId },
+    },
+    {
+      next: (result) => {
+        if (result.data?.onMessageUpdate) {
+          onMessage(toClientMessage(result.data.onMessageUpdate))
+        }
+      },
+      error: (error) => {
+        onError?.(error)
+      },
+      complete: () => {},
+    },
+  )
 }

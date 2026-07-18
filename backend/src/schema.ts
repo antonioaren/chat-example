@@ -15,6 +15,9 @@ export const schema = createSchema({
 		type Message {
 			id: ID!
 			body: String!
+			senderId: ID!
+			senderName: String!
+			createdAt: String!
 			status: MessageStatus!
 			statusLabel: String!
 			deliveredAt: String
@@ -31,7 +34,12 @@ export const schema = createSchema({
 		}
 
 		type Mutation {
-			sendMessage(conversationId: ID!, body: String!): Message!
+			sendMessage(
+				conversationId: ID!
+				body: String!
+				senderId: ID!
+				senderName: String!
+			): Message!
 		}
 
 		type Subscription {
@@ -58,13 +66,25 @@ export const schema = createSchema({
 				{
 					conversationId,
 					body,
-				}: { conversationId: string; body: string },
+					senderId,
+					senderName,
+				}: {
+					conversationId: string;
+					body: string;
+					senderId: string;
+					senderName: string;
+				},
 			) => {
 				const conversation = conversations.get(conversationId);
 				if (!conversation) {
 					throw new Error("Conversation not found");
 				}
-				const message = await addMessage(conversationId, body);
+				const message = await addMessage(
+					conversationId,
+					body,
+					senderId,
+					senderName,
+				);
 
 				// Simulate Twilio sending the message
 				setTimeout(() => {

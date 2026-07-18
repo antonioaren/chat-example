@@ -18,6 +18,8 @@ export const conversations = new Map<string, Conversation>([
 export const addMessage = async (
 	conversationId: string,
 	body: string,
+	senderId: string,
+	senderName: string,
 ): Promise<Message> => {
 	const conversation = conversations.get(conversationId);
 	if (!conversation) {
@@ -27,6 +29,9 @@ export const addMessage = async (
 	const message: Message = {
 		id: crypto.randomUUID(),
 		body,
+		senderId,
+		senderName,
+		createdAt: new Date().toISOString(),
 		status: "queued" as const,
 	};
 	conversation.messages.push(message);
@@ -41,12 +46,18 @@ function _applyPatch(message: Message, patch: StatusPatch): Message {
 			return {
 				id: message.id,
 				body: message.body,
+				senderId: message.senderId,
+				senderName: message.senderName,
+				createdAt: message.createdAt,
 				status: "sent",
 			};
 		case "delivered":
 			return {
 				id: message.id,
 				body: message.body,
+				senderId: message.senderId,
+				senderName: message.senderName,
+				createdAt: message.createdAt,
 				status: "delivered",
 				deliveredAt: patch.deliveredAt,
 			};
@@ -54,6 +65,9 @@ function _applyPatch(message: Message, patch: StatusPatch): Message {
 			return {
 				id: message.id,
 				body: message.body,
+				senderId: message.senderId,
+				senderName: message.senderName,
+				createdAt: message.createdAt,
 				status: "failed",
 				error: patch.error,
 			};

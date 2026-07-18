@@ -8,10 +8,20 @@ export const MESSAGE_STATUS = {
 export type MessageStatus =
 	(typeof MESSAGE_STATUS)[keyof typeof MESSAGE_STATUS];
 
-export type Message =
-	| { id: string; body: string; status: "queued" | "sent" }
-	| { id: string; body: string; status: "delivered"; deliveredAt: string }
-	| { id: string; body: string; status: "failed"; error: string };
+type MessageBase = {
+	id: string;
+	body: string;
+	senderId: string;
+	senderName: string;
+	createdAt: string;
+};
+
+export type Message = MessageBase &
+	(
+		| { status: "queued" | "sent" }
+		| { status: "delivered"; deliveredAt: string }
+		| { status: "failed"; error: string }
+	);
 
 export type Conversation = {
 	id: string;

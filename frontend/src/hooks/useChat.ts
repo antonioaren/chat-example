@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import * as chatService from '@/stubs/chatService'
-import { subscribeToConversation } from '@/stubs/messages'
-import { isOwnMessage, type Message } from '@/types/chat'
+import type { Message } from '@/types/chat'
 
 interface UseChatResult {
   messages: Message[]
@@ -12,21 +11,20 @@ interface UseChatResult {
   retry: (messageId: string) => Promise<void>
 }
 
-const TERMINAL_STATUSES = new Set<Message['status']>(['delivered', 'failed'])
-
-function isPendingOwnMessage(
-  message: Message,
-  currentUserId: string,
-): boolean {
-  return (
-    isOwnMessage(message, currentUserId) &&
-    !TERMINAL_STATUSES.has(message.status)
-  )
+function upsertById(messages: Message[], incoming: Message): Message[] {
+  const exists = messages.some((message) => message.id === incoming.id)
+  if (exists) {
+    return messages.map((message) =>
+      message.id === incoming.id ? incoming : message,
+    )
+  }
+  return [...messages, incoming]
 }
 
 export function useChat(
   conversationId: string,
   currentUserId: string,
+  currentUserName: string,
 ): UseChatResult {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -34,11 +32,6 @@ export function useChat(
 
   const messagesRef = useRef<Message[]>(messages)
   messagesRef.current = messages
-
-  const loadMessages = useCallback(async () => {
-    const fetched = await chatService.fetchMessages(conversationId)
-    setMessages(fetched)
-  }, [conversationId])
 
   useEffect(() => {
     let cancelled = false
@@ -71,44 +64,10 @@ export function useChat(
   }, [conversationId])
 
   useEffect(() => {
-    return subscribeToConversation(conversationId, () => {
-      void loadMessages()
+    return chatService.subscribeToMessages(conversationId, (incoming) => {
+      setMessages((prev) => upsertById(prev, incoming))
     })
-  }, [conversationId, loadMessages])
-
-  useEffect(() => {
-    const pendingMessages = messages.filter((message) =>
-      isPendingOwnMessage(message, currentUserId),
-    )
-    if (pendingMessages.length === 0) return
-
-    const intervalId = window.setInterval(async () => {
-      const updates = await Promise.all(
-        pendingMessages.map(async (message) => ({
-          message,
-          latest: await chatService.getMessage(conversationId, message.id),
-        })),
-      )
-
-      setMessages((current) => {
-        let next = current
-
-        for (const { message, latest } of updates) {
-          if (!latest || latest.status === message.status) continue
-
-          next = next.map((item) =>
-            item.id === message.id ? latest : item,
-          )
-        }
-
-        return next
-      })
-    }, 300)
-
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [conversationId, currentUserId, messages])
+  }, [conversationId])
 
   const submitOutbound = useCallback(
     async (optimisticId: string, body: string): Promise<void> => {
@@ -117,10 +76,15 @@ export function useChat(
           conversationId,
           body,
           currentUserId,
+          currentUserName,
         )
+        // The subscription may echo the server message before the mutation
+        // resolves; dropping the optimistic entry and upserting covers both
+        // orderings without duplicates.
         setMessages((prev) =>
-          prev.map((message) =>
-            message.id === optimisticId ? serverMessage : message,
+          upsertById(
+            prev.filter((message) => message.id !== optimisticId),
+            serverMessage,
           ),
         )
       } catch {
@@ -133,7 +97,7 @@ export function useChat(
         )
       }
     },
-    [conversationId, currentUserId],
+    [conversationId, currentUserId, currentUserName],
   )
 
   const sendMessage = useCallback(

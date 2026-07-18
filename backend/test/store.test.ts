@@ -25,7 +25,9 @@ describe('store — addMessage', () => {
   })
 
   it('should throw when conversationId does not exist', async () => {
-    await expect(addMessage('unknown-conv', 'hello')).rejects.toThrow(
+    await expect(
+      addMessage('unknown-conv', 'hello', 'user-1', 'Alice'),
+    ).rejects.toThrow(
       /conversation not found/i,
     )
   })
@@ -33,13 +35,16 @@ describe('store — addMessage', () => {
   it('should append the new message to conversation.messages', async () => {
     conversations.set('conv-1', { id: 'conv-1', messages: [] })
 
-    const msg = await addMessage('conv-1', 'hello world')
+    const msg = await addMessage('conv-1', 'hello world', 'user-1', 'Alice')
 
     const conv = conversations.get('conv-1')!
     expect(conv.messages).toHaveLength(1)
     expect(conv.messages[0]).toMatchObject({
       id: msg.id,
       body: 'hello world',
+      senderId: 'user-1',
+      senderName: 'Alice',
+      createdAt: expect.any(String),
       status: 'queued',
     })
   })
@@ -47,7 +52,7 @@ describe('store — addMessage', () => {
   it('should not leave the message only in a standalone Map outside the conversation', async () => {
     conversations.set('conv-1', { id: 'conv-1', messages: [] })
 
-    await addMessage('conv-1', 'check nesting')
+    await addMessage('conv-1', 'check nesting', 'user-1', 'Alice')
 
     // The message must be reachable through the conversation, not just a side-channel Map
     const conv = conversations.get('conv-1')!
@@ -57,9 +62,9 @@ describe('store — addMessage', () => {
   it('should append multiple messages in insertion order', async () => {
     conversations.set('conv-1', { id: 'conv-1', messages: [] })
 
-    await addMessage('conv-1', 'first')
-    await addMessage('conv-1', 'second')
-    await addMessage('conv-1', 'third')
+    await addMessage('conv-1', 'first', 'user-1', 'Alice')
+    await addMessage('conv-1', 'second', 'user-1', 'Alice')
+    await addMessage('conv-1', 'third', 'user-1', 'Alice')
 
     const conv = conversations.get('conv-1')!
     expect(conv.messages).toHaveLength(3)
@@ -74,7 +79,7 @@ describe('store — updateStatus', () => {
 
   it('should update the nested message inside conversation.messages', async () => {
     conversations.set('conv-1', { id: 'conv-1', messages: [] })
-    const msg = await addMessage('conv-1', 'update me')
+    const msg = await addMessage('conv-1', 'update me', 'user-1', 'Alice')
 
     updateStatus('conv-1', msg.id, { status: 'sent' })
 
@@ -86,7 +91,7 @@ describe('store — updateStatus', () => {
 
   it('should update deliveredAt on a delivered status patch', async () => {
     conversations.set('conv-1', { id: 'conv-1', messages: [] })
-    const msg = await addMessage('conv-1', 'deliver me')
+    const msg = await addMessage('conv-1', 'deliver me', 'user-1', 'Alice')
     const deliveredAt = new Date().toISOString()
 
     updateStatus('conv-1', msg.id, { status: 'delivered', deliveredAt })
@@ -127,7 +132,7 @@ describe('GraphQL — sendMessage mutation', () => {
   it('should return a GraphQL error when conversationId does not exist', async () => {
     const res = await gql({
       query: `mutation {
-        sendMessage(conversationId: "missing-conv", body: "hi") {
+        sendMessage(conversationId: "missing-conv", body: "hi", senderId: "user-1", senderName: "Alice") {
           id body status
         }
       }`,
@@ -143,8 +148,8 @@ describe('GraphQL — sendMessage mutation', () => {
 
     const res = await gql({
       query: `mutation {
-        sendMessage(conversationId: "conv-1", body: "hello") {
-          id body status
+        sendMessage(conversationId: "conv-1", body: "hello", senderId: "user-1", senderName: "Alice") {
+          id body senderId senderName createdAt status
         }
       }`,
     })
@@ -154,6 +159,9 @@ describe('GraphQL — sendMessage mutation', () => {
     expect(json.data.sendMessage).toMatchObject({
       id: expect.any(String),
       body: 'hello',
+      senderId: 'user-1',
+      senderName: 'Alice',
+      createdAt: expect.any(String),
       status: 'QUEUED',
     })
   })
@@ -163,7 +171,7 @@ describe('GraphQL — sendMessage mutation', () => {
 
     await gql({
       query: `mutation {
-        sendMessage(conversationId: "conv-1", body: "persisted") {
+        sendMessage(conversationId: "conv-1", body: "persisted", senderId: "user-1", senderName: "Alice") {
           id body status
         }
       }`,
@@ -187,7 +195,7 @@ describe('GraphQL — conversation query', () => {
   it('should return conversation with messages when it exists', async () => {
     conversations.set('conv-q', { id: 'conv-q', messages: [] })
     await gql({
-      query: `mutation { sendMessage(conversationId: "conv-q", body: "hi") { id } }`,
+      query: `mutation { sendMessage(conversationId: "conv-q", body: "hi", senderId: "user-1", senderName: "Alice") { id } }`,
     })
 
     const res = await gql({

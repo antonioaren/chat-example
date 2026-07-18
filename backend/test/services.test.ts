@@ -18,7 +18,9 @@ describe('services — sendMessage aggregate invariant', () => {
 
   it('should reject with "Conversation not found" when conversationId does not exist', async () => {
     // Current implementation never checks the store → resolves instead of rejects → RED
-    await expect(sendMessage('no-such-conv', 'hello')).rejects.toThrow(
+    await expect(
+      sendMessage('no-such-conv', 'hello', 'user-1', 'Alice'),
+    ).rejects.toThrow(
       /conversation not found/i,
     )
   })
@@ -26,7 +28,7 @@ describe('services — sendMessage aggregate invariant', () => {
   it('should persist the returned message inside conversation.messages', async () => {
     conversations.set('conv-1', { id: 'conv-1', messages: [] })
 
-    const msg = await sendMessage('conv-1', 'persisted body')
+    const msg = await sendMessage('conv-1', 'persisted body', 'user-1', 'Alice')
 
     // Current implementation never touches the store → conv.messages stays [] → RED
     const conv = conversations.get('conv-1')!
@@ -34,6 +36,9 @@ describe('services — sendMessage aggregate invariant', () => {
     expect(conv.messages[0]).toMatchObject({
       id: msg.id,
       body: 'persisted body',
+      senderId: 'user-1',
+      senderName: 'Alice',
+      createdAt: expect.any(String),
       status: 'queued',
     })
   })
