@@ -12,6 +12,8 @@
     "dev:backend": "pnpm --filter @chat-example/backend dev",
     "build": "pnpm -r run build",
     "test": "pnpm --filter @chat-example/backend test",
-    "lint": "pnpm --filter @chat-example/frontend lint"
+    "lint": "pnpm --filter @chat-example/frontend lint",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
   }
 }
