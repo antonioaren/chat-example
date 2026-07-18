@@ -8,6 +8,7 @@ interface UseChatResult {
   isLoading: boolean
   fetchError: string | null
   sendMessage: (text: string) => Promise<void>
+  sendMessages: (texts: string[]) => Promise<void>
   retry: (messageId: string) => Promise<void>
 }
 
@@ -117,6 +118,13 @@ export function useChat(
     [currentUserId, submitOutbound],
   )
 
+  const sendMessages = useCallback(
+    async (texts: string[]): Promise<void> => {
+      await Promise.all(texts.map((text) => sendMessage(text)))
+    },
+    [sendMessage],
+  )
+
   const retry = useCallback(
     async (messageId: Message['id']): Promise<void> => {
       const failedMessage = messagesRef.current.find(
@@ -137,5 +145,5 @@ export function useChat(
     [submitOutbound],
   )
 
-  return { messages, isLoading, fetchError, sendMessage, retry }
+  return { messages, isLoading, fetchError, sendMessage, sendMessages, retry }
 }
