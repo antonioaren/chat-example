@@ -1,0 +1,17 @@
+{
+  "name": "chat-example",
+  "private": true,
+  "packageManager": "pnpm@11.14.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=11"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:frontend": "pnpm --filter @chat-example/frontend dev",
+    "dev:backend": "pnpm --filter @chat-example/backend dev",
+    "build": "pnpm -r run build",
+    "test": "pnpm --filter @chat-example/backend test",
+    "lint": "pnpm --filter @chat-example/frontend lint"
+  }
+}
