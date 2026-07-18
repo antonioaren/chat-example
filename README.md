@@ -16,14 +16,15 @@ A small chat application sandbox: a React frontend and a GraphQL backend, organi
 
 ```bash
 pnpm install
-
-# Run both apps in parallel
-pnpm dev
+pnpm docker:up      # starts DynamoDB Local + Redis (required by the backend)
 
 # Or individually
 pnpm dev:frontend   # Vite dev server (HMR)
 pnpm dev:backend    # http://localhost:4000/graphql (GraphiQL enabled)
+pnpm dev:worker     # backend queue worker (separate process, run alongside dev:backend)
 ```
+
+Copy `backend/env.example` to `backend/.env` before running the backend or worker.
 
 Other root scripts:
 
@@ -51,10 +52,13 @@ chat-example/
     │   ├── server.ts     # HTTP bootstrap
     │   ├── app.ts        # Yoga instance (network-free, testable via yoga.fetch())
     │   ├── schema.ts     # SDL + resolvers
-    │   ├── services.ts   # messaging-provider seam (Twilio stand-in)
-    │   ├── store.ts      # in-memory state, pubsub
+    │   ├── services.ts   # messaging-provider seam (Twilio stand-in), enqueues to BullMQ
+    │   ├── store.ts      # pubsub only
+    │   ├── db/           # DynamoDB client, bootstrap, messagesRepo
+    │   ├── queue/         # BullMQ queues + workers (send-message, message-status)
+    │   ├── worker.ts     # separate worker process entrypoint
     │   └── types.ts      # domain types
-    └── test/             # Vitest suites
+    └── test/             # Vitest suites (test/integration/ is opt-in, needs Docker)
 ```
 
 ## How it works
