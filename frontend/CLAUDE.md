@@ -13,7 +13,7 @@ No test runner is configured.
 
 ## Project Purpose
 
-Practice sandbox: a single-screen React chat app built against in-memory stubs. The stub layer (`src/stubs/`) is intentionally swappable for real API calls later — keep that boundary intact.
+Practice sandbox: a React chat app talking to the GraphQL backend (auth, conversations, messages). The service layer (`src/stubs/chatService.ts`) is the single API boundary — keep all GraphQL operations there.
 
 ## Stack
 
@@ -21,9 +21,13 @@ Vite 8 + React 19 + TypeScript 6 (strict-ish: `noUnusedLocals`, `verbatimModuleS
 
 ## Architecture
 
-Data flows in one direction: `stubs/chatService.ts` → `hooks/useChat.ts` → `pages/ChatPage.tsx` → `components/chat/*`.
+Data flows in one direction: `stubs/chatService.ts` → hooks (`useAuth`, `useChat`) → pages → components.
 
-- `src/types/chat.ts` — `Message` (direction: inbound/outbound; status: queued → sent → delivered, or failed) and `conversation`.
-- `src/stubs/chatService.ts` — fake async API over the `stubMessages` Map (`src/stubs/messages.ts`). `sendMessage` simulates latency (1s), a 30% random failure rate, and delayed status transitions (sent at 800ms, delivered at 2s).
-- `src/hooks/useChat.ts` — all chat state lives here. Handles: initial fetch keyed by `corporationId`, optimistic sends (temporary `optimistic-<uuid>` id replaced by the server message), failure marking + `retry`, and a 300ms polling interval that reconciles status for pending outbound messages. Components stay presentational; state logic belongs in this hook.
-- `src/components/chat/` — presentational pieces (ChatWindow, MessageList, MessageBubble, MessageInput) composed by `src/pages/ChatPage.tsx`.
+- Routing (react-router): `/login`, `/register` (public), `/conversations/:conversationId` (protected), `/` (redirect to first conversation or empty state). Identity travels in the JWT only — never in the URL.
+- `src/types/chat.ts` + `src/types/user.ts` — `Message` (status: queued → sent → delivered, or failed), `Conversation`, `User`, `AuthPayload`.
+- `src/stubs/chatService.ts` — all GraphQL operations (register/login/me, conversations CRUD, addParticipant by email, sendMessage, SSE subscription via `graphql-sse`).
+- `src/services/graphqlClient.ts` — `gqlFetch` + SSE client; attaches `Authorization: Bearer` lazily from `src/services/authStorage.ts` (localStorage key `simple-react-chat:auth`).
+- `src/hooks/useAuth.tsx` — auth context provider (user, token, register, login, logout). `src/hooks/useChat.ts` — chat state: initial fetch, optimistic sends (temporary `optimistic-<uuid>` id replaced by the server message), failure marking + `retry`, SSE-driven status updates.
+- `src/pages/ChatPage.tsx` — sidebar (`ConversationsSidebar`) + header (signed-in state, logout, `AddParticipantForm`) + `src/components/chat/*` presentational pieces.
+
+E2E: Playwright specs in `e2e/` (`npm run test:e2e`); requires Docker infra (`pnpm docker:dev`).

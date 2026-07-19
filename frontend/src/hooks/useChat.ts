@@ -25,7 +25,6 @@ function upsertById(messages: Message[], incoming: Message): Message[] {
 export function useChat(
   conversationId: string,
   currentUserId: string,
-  currentUserName: string,
 ): UseChatResult {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -35,6 +34,8 @@ export function useChat(
   messagesRef.current = messages
 
   useEffect(() => {
+    if (!conversationId) return
+
     let cancelled = false
 
     setIsLoading(true)
@@ -65,6 +66,8 @@ export function useChat(
   }, [conversationId])
 
   useEffect(() => {
+    if (!conversationId) return
+
     return chatService.subscribeToMessages(conversationId, (incoming) => {
       setMessages((prev) => upsertById(prev, incoming))
     })
@@ -73,11 +76,10 @@ export function useChat(
   const submitOutbound = useCallback(
     async (optimisticId: string, body: string): Promise<void> => {
       try {
+        // Sender identity comes from the auth token on the backend.
         const serverMessage = await chatService.sendMessage(
           conversationId,
           body,
-          currentUserId,
-          currentUserName,
         )
         // Replace the optimistic row with the server message (status queued).
         // Peers do not see this yet — backend publishes only from `sent` onward
@@ -88,17 +90,19 @@ export function useChat(
             serverMessage,
           ),
         )
-      } catch {
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : 'Failed to send message'
         setMessages((prev) =>
           prev.map((message) =>
             message.id === optimisticId
-              ? { ...message, status: 'failed' }
+              ? { ...message, status: 'failed', error: reason }
               : message,
           ),
         )
       }
     },
-    [conversationId, currentUserId, currentUserName],
+    [conversationId],
   )
 
   const sendMessage = useCallback(
@@ -136,7 +140,7 @@ export function useChat(
       setMessages((prev) =>
         prev.map((message) =>
           message.id === messageId
-            ? { ...message, status: 'queued' }
+            ? { ...message, status: 'queued', error: undefined }
             : message,
         ),
       )

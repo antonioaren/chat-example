@@ -6,7 +6,6 @@ import {
 	DescribeTableCommand,
 	ResourceNotFoundException,
 } from "@aws-sdk/client-dynamodb";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { docClient, TABLE_NAME } from "./client.js";
 
 async function createTable(): Promise<void> {
@@ -26,35 +25,10 @@ async function createTable(): Promise<void> {
 	);
 }
 
-async function ensureConversationSeeded(conversationId: string): Promise<void> {
-	try {
-		await docClient.send(
-			new PutCommand({
-				TableName: TABLE_NAME,
-				Item: {
-					PK: `CONVERSATION#${conversationId}`,
-					SK: "METADATA",
-					id: conversationId,
-					createdAt: new Date().toISOString(),
-				},
-				ConditionExpression: "attribute_not_exists(PK)",
-			}),
-		);
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.name === "ConditionalCheckFailedException"
-		) {
-			return;
-		}
-		throw error;
-	}
-}
-
 /**
- * Creates the table if missing and seeds `conversation-1`. Idempotent — safe
- * to call on every server/worker boot. No-op unless
- * DYNAMODB_AUTO_CREATE_TABLE=true.
+ * Creates the table if missing. Idempotent — safe to call on every
+ * server/worker boot. No-op unless DYNAMODB_AUTO_CREATE_TABLE=true.
+ * Conversations are created by users via the createConversation mutation.
  */
 export async function ensureTableExists(): Promise<void> {
 	if (process.env.DYNAMODB_AUTO_CREATE_TABLE !== "true") {
@@ -70,6 +44,4 @@ export async function ensureTableExists(): Promise<void> {
 			throw error;
 		}
 	}
-
-	await ensureConversationSeeded("conversation-1");
 }

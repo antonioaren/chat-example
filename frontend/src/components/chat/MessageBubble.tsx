@@ -25,6 +25,11 @@ export const MessageBubble = memo(function MessageBubble({
           {message.status}
         </span>
       ) : null}
+      {isOwn && message.status === 'failed' && message.error ? (
+        <span className="message-bubble__error" role="alert">
+          {message.error}
+        </span>
+      ) : null}
       {isOwn && message.status === 'failed' ? (
         <button
           className="message-bubble__retry"

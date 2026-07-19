@@ -19,6 +19,9 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/backend/node_modules ./backend/node_modules
 COPY --from=build /app/backend/dist ./backend/dist
 COPY --from=build /app/backend/package.json ./backend/package.json
+# prisma migrate deploy at container start needs the schema, migrations and config
+COPY --from=build /app/backend/prisma ./backend/prisma
+COPY --from=build /app/backend/prisma.config.ts ./backend/prisma.config.ts
 
 WORKDIR /app/backend
 

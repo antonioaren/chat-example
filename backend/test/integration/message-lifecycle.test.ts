@@ -1,6 +1,6 @@
 // Opt-in integration tier: exercises the real pipeline end-to-end against
-// Docker services (DynamoDB Local + Redis). Run `pnpm docker:up` first, then
-// `pnpm test:integration`. Not part of the default `pnpm test` run.
+// Docker services (DynamoDB Local + Redis + PostgreSQL). Run `pnpm docker:dev`
+// first, then `pnpm test:integration`. Not part of the default `pnpm test` run.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { yoga } from '../../src/app.js'
@@ -11,14 +11,36 @@ import { pubsub } from '../../src/store.js'
 import type { Worker } from 'bullmq'
 import type { Message } from '../../src/types.js'
 
-const gql = (body: unknown) =>
+const gql = (body: unknown, token?: string) =>
   yoga.fetch(
     new Request('http://localhost/graphql', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(body),
     }),
   )
+
+async function registerUser(label: string): Promise<string> {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const res = await gql({
+    query: `mutation {
+      register(input: {
+        firstName: "${label}"
+        lastName: "Lifecycle"
+        email: "lifecycle-${stamp}@example.com"
+        phone: "+34600000000"
+        alias: "lifecycle-${label.toLowerCase()}-${stamp}"
+        password: "integration-pass"
+      }) { token }
+    }`,
+  })
+  const json = await res.json()
+  expect(json.errors).toBeUndefined()
+  return json.data.register.token as string
+}
 
 async function pollUntilDelivered(
   conversationId: string,
@@ -52,8 +74,18 @@ describe('integration — send-message pipeline end-to-end', () => {
   it(
     'should progress a message from queued to delivered via the real queue and DB',
     async () => {
+      const token = await registerUser('Sender')
+
+      const createRes = await gql(
+        { query: `mutation { createConversation { id } }` },
+        token,
+      )
+      const createJson = await createRes.json()
+      expect(createJson.errors).toBeUndefined()
+      const conversationId = createJson.data.createConversation.id as string
+
       const events: Message[] = []
-      const iterator = pubsub.subscribe('message-conversation-1')[
+      const iterator = pubsub.subscribe(`message-${conversationId}`)[
         Symbol.asyncIterator
       ]()
       const pump = (async () => {
@@ -65,19 +97,22 @@ describe('integration — send-message pipeline end-to-end', () => {
       })()
       void pump
 
-      const res = await gql({
-        query: `mutation {
-          sendMessage(conversationId: "conversation-1", body: "integration test", senderId: "user-1", senderName: "Alice") {
-            id status
-          }
-        }`,
-      })
+      const res = await gql(
+        {
+          query: `mutation {
+            sendMessage(conversationId: "${conversationId}", body: "integration test") {
+              id status
+            }
+          }`,
+        },
+        token,
+      )
       const json = await res.json()
       expect(json.errors).toBeUndefined()
       expect(json.data.sendMessage.status).toBe('QUEUED')
 
       const messageId = json.data.sendMessage.id as string
-      const delivered = await pollUntilDelivered('conversation-1', messageId)
+      const delivered = await pollUntilDelivered(conversationId, messageId)
 
       expect(delivered.status).toBe('delivered')
       if (delivered.status === 'delivered') {
