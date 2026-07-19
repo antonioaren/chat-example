@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "tsx watch --env-file=.env src/server.ts",
     "dev:worker": "tsx watch --env-file=.env src/worker.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "postinstall": "prisma generate",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -20,13 +23,19 @@
     "@aws-sdk/client-dynamodb": "^3.907.0",
     "@aws-sdk/lib-dynamodb": "^3.907.0",
     "@graphql-yoga/redis-event-target": "^3.0.3",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "bcryptjs": "^3.0.3",
     "bullmq": "^5.61.0",
     "graphql": "^16.14.2",
     "graphql-yoga": "^5.21.2",
-    "ioredis": "^5.9.0"
+    "ioredis": "^5.9.0",
+    "jose": "^6.2.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^26.1.1",
+    "prisma": "^7.8.0",
     "tsx": "^4.23.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

@@ -14,11 +14,21 @@ services:
     ports: ["6379:6379"]
     volumes: ["redis-data:/data"]
 
+  postgres:
+    image: postgres:16
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_USER: chat
+      POSTGRES_PASSWORD: chat
+      POSTGRES_DB: chat
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: ["node", "dist/server.js"]
+    command:
+      ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
     ports: ["4000:4000"]
     environment:
       PORT: 4000
@@ -29,7 +39,10 @@ services:
       AWS_SECRET_ACCESS_KEY: local
       DYNAMODB_TABLE_NAME: chat-messages
       DYNAMODB_AUTO_CREATE_TABLE: "true"
-    depends_on: [dynamodb-local, redis]
+      DATABASE_URL: postgresql://chat:chat@postgres:5432/chat
+      JWT_SECRET: dev-secret-change-me
+      JWT_TTL: 7d
+    depends_on: [dynamodb-local, redis, postgres]
 
   worker:
     build:

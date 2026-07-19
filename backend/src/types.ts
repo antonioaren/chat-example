@@ -28,6 +28,19 @@ export type Conversation = {
 	messages: Message[];
 };
 
+// Users live in PostgreSQL (via Prisma), not DynamoDB. passwordHash never
+// leaves the backend; the GraphQL User type omits it.
+export type User = {
+	id: string;
+	firstName: string;
+	lastName: string;
+	email: string;
+	phone: string;
+	alias: string;
+	passwordHash: string;
+	createdAt: Date;
+};
+
 // Human-readable status label; narrowing the discriminated union gives
 // safe access to per-status fields, and the `never` check keeps the
 // switch exhaustive if a new status is added.

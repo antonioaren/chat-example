@@ -15,6 +15,8 @@ export type Message = {
   senderId: string;
   status: "queued" | "sent" | "delivered" | "failed";
   createdAt: string;
+  /** Populated on failed sends so the UI can explain why. */
+  error?: string;
 };
 
 export function isOwnMessage(
