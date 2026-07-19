@@ -1,0 +1,60 @@
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local
+    # The named volume is created root-owned, but the image runs as user
+    # `dynamodblocal`, which then cannot write the SQLite db file. Run as
+    # root so -dbPath is writable.
+    user: root
+    ports: ["8000:8000"]
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
+    volumes: ["dynamodb-data:/home/dynamodblocal/data"]
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+    volumes: ["redis-data:/data"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["node", "dist/server.js"]
+    ports: ["4000:4000"]
+    environment:
+      PORT: 4000
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      REDIS_URL: redis://redis:6379
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      DYNAMODB_TABLE_NAME: chat-messages
+      DYNAMODB_AUTO_CREATE_TABLE: "true"
+    depends_on: [dynamodb-local, redis]
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["node", "dist/worker.js"]
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      REDIS_URL: redis://redis:6379
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      DYNAMODB_TABLE_NAME: chat-messages
+      DYNAMODB_AUTO_CREATE_TABLE: "true"
+    depends_on: [dynamodb-local, redis]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_GRAPHQL_URL: http://localhost:4000/graphql
+    ports: ["8080:80"]
+    depends_on: [backend]
+
+volumes:
+  dynamodb-data:
+  redis-data:

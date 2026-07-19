@@ -9,7 +9,7 @@ npm run dev          # dev server with watch (tsx), http://localhost:4000/graphq
 npm run build        # tsc → dist/
 npm start            # run compiled dist/server.js
 npm test             # vitest run (all tests once)
-npx vitest run test/store.test.ts   # single test file
+npx vitest run test/db/messagesRepo.test.ts   # single test file
 npm run test:watch   # vitest watch mode
 npm run typecheck    # tsc --noEmit via tsconfig.typecheck.json (includes test/, unlike build)
 ```
@@ -24,20 +24,24 @@ Layering (each file imports only from the layer below):
 
 - `src/server.ts` — Node `http` bootstrap; only place that touches the network.
 - `src/app.ts` — exports the Yoga instance without listening, so tests can call `yoga.fetch()` in-memory (see `test/app.test.ts`) with no real HTTP.
-- `src/schema.ts` — SDL + resolvers. The GraphQL `MessageStatus` enum uses UPPERCASE names mapped to the store's lowercase internal values via the `MessageStatus` resolver map. `sendMessage` simulates a provider with `setTimeout`s that advance status queued → sent → delivered.
-- `src/services.ts` — messaging-provider seam (Twilio stand-in); delegates persistence to the store.
-- `src/store.ts` — in-memory state. `Conversation` is the aggregate root and owns its messages (there is no standalone messages map); all reads/writes go through the conversation. Seeded with `conversation-1`.
+- `src/schema.ts` — SDL + resolvers. The GraphQL `MessageStatus` enum uses UPPERCASE names mapped to the store's lowercase internal values via the `MessageStatus` resolver map. `sendMessage` enqueues a `send-message` BullMQ job; status progression queued → sent → delivered happens via delayed jobs on the `message-status` queue, processed by a separate worker process.
+- `src/services.ts` — messaging-provider seam (Twilio stand-in); enqueues onto `messageQueue` instead of writing directly.
+- `src/store.ts` — pubsub only (`createPubSub`), used by `onMessageUpdate`.
+- `src/db/` — DynamoDB persistence: `client.ts` (SDK client), `bootstrap.ts` (`ensureTableExists`, gated by `DYNAMODB_AUTO_CREATE_TABLE`), `messagesRepo.ts` (single-table repo: PK=`CONVERSATION#<id>`, SK=`METADATA` or `MESSAGE#<createdAtISO>#<messageId>`).
+- `src/queue/` — BullMQ: `messageQueue`/`statusQueue` (producers), `messageWorker`/`statusWorker` (consumers), `index.ts` (`startWorkers()`). Run via the separate `src/worker.ts` process (`pnpm dev:worker`), not in-process with the server.
 - `src/types.ts` — domain types.
+
+Requires Docker infra (`pnpm docker:dev` from repo root — DynamoDB Local + Redis only) and a `backend/.env` (copy from `backend/.env.example`) before `pnpm dev` or `pnpm dev:worker`. `pnpm docker:up` (no `.dev` suffix) instead builds and runs the full stack — backend, worker, and frontend included — as a production-like simulation; not needed for day-to-day dev.
 
 Key invariants:
 
-- `Message` is a discriminated union on `status`: `delivered` requires `deliveredAt`, `failed` requires `error`. Status changes go through `updateStatus` with a `StatusPatch` union — never mutate `status` directly, or the union guarantees break. Switches over these unions end with a `never` exhaustiveness check.
-- Real-time updates use Yoga's `createPubSub` with topic `message-{conversationId}`; both `addMessage` and `updateStatus` publish, and the `onMessageUpdate` subscription resolves the payload as-is.
+- `Message` is a discriminated union on `status`: `delivered` requires `deliveredAt`, `failed` requires `error`. Status changes go through `messagesRepo.updateMessageStatus` with a `StatusPatch` union — never mutate `status` directly, or the union guarantees break. Switches over these unions end with a `never` exhaustiveness check.
+- Real-time updates use Yoga's `createPubSub` with topic `message-{conversationId}`. Only `statusWorker` publishes (on `sent`/`delivered`/`failed`); `messageWorker`'s initial `queued` persist does not, preserving "queued invisible to peers" until the first status advance. `onMessageUpdate` resolves the payload as-is.
 - Resolver errors on nullable fields (e.g. `Query.conversation`) surface as `data.conversation: null` plus an `errors` entry — tests assert on the field, not on `data` itself.
 
 ## Tests
 
-Vitest. `test/app.test.ts` exercises the full GraphQL layer through `yoga.fetch()`; `store.test.ts` and `services.test.ts` unit-test the layers directly. No network or mocks of the store needed.
+Vitest, two tiers. Default `npm test` runs the unit tier only (`vitest.config.ts` excludes `test/integration/**`) — no Docker required: `test/app.test.ts` exercises the full GraphQL layer through `yoga.fetch()` with the DB/queue mocked; `test/db/messagesRepo.test.ts` and `test/queue/messageWorker.test.ts` mock the AWS SDK client and BullMQ respectively; `test/services.test.ts` mocks `messageQueue.add`. `npm run test:integration` runs `test/integration/**` against real DynamoDB Local + Redis (`vitest.integration.config.ts`) — requires `pnpm docker:dev` first.
 
 ## Notes
 

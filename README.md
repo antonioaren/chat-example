@@ -16,14 +16,26 @@ A small chat application sandbox: a React frontend and a GraphQL backend, organi
 
 ```bash
 pnpm install
-
-# Run both apps in parallel
-pnpm dev
+pnpm docker:dev     # starts DynamoDB Local + Redis only (infra for local dev)
 
 # Or individually
 pnpm dev:frontend   # Vite dev server (HMR)
 pnpm dev:backend    # http://localhost:4000/graphql (GraphiQL enabled)
+pnpm dev:worker     # backend queue worker (separate process, run alongside dev:backend)
 ```
+
+Copy `backend/.env.example` to `backend/.env` before running the backend or worker.
+
+### Full stack in Docker
+
+`docker-compose.yml` (not `.dev.yml`) builds and runs everything — DynamoDB Local, Redis, backend, worker, and the frontend served by nginx — as the closest local simulation of production:
+
+```bash
+pnpm docker:up      # builds images and starts the full stack
+pnpm docker:down    # stops it
+```
+
+Frontend at `http://localhost:8080`, backend at `http://localhost:4000/graphql`. Use `docker:dev` instead when iterating locally with `pnpm dev:*` — it only starts the stateful infra (DynamoDB Local + Redis) and lets you keep hot-reloading via `tsx watch`/Vite.
 
 Other root scripts:
 
@@ -51,10 +63,13 @@ chat-example/
     │   ├── server.ts     # HTTP bootstrap
     │   ├── app.ts        # Yoga instance (network-free, testable via yoga.fetch())
     │   ├── schema.ts     # SDL + resolvers
-    │   ├── services.ts   # messaging-provider seam (Twilio stand-in)
-    │   ├── store.ts      # in-memory state, pubsub
+    │   ├── services.ts   # messaging-provider seam (Twilio stand-in), enqueues to BullMQ
+    │   ├── store.ts      # pubsub only
+    │   ├── db/           # DynamoDB client, bootstrap, messagesRepo
+    │   ├── queue/         # BullMQ queues + workers (send-message, message-status)
+    │   ├── worker.ts     # separate worker process entrypoint
     │   └── types.ts      # domain types
-    └── test/             # Vitest suites
+    └── test/             # Vitest suites (test/integration/ is opt-in, needs Docker)
 ```
 
 ## How it works
